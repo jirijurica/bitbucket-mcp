@@ -615,7 +615,6 @@ class BitbucketClient:
                 "Accept": "application/json"
             },
             timeout=30.0,
-            trust_env=False,  # Disable proxy from environment for testing
             event_hooks=event_hooks,
         )
 

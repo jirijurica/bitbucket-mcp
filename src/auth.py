@@ -362,7 +362,7 @@ class BitbucketTokenVerifier:
         headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
         try:
             async with httpx.AsyncClient(
-                base_url=self._base_url, timeout=self._timeout, trust_env=False
+                base_url=self._base_url, timeout=self._timeout
             ) as client:
                 response = await client.get("/user", headers=headers)
                 if response.status_code in (401, 403):
