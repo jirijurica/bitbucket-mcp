@@ -46,6 +46,7 @@ from .utils.transformers import (
     slim_status, slim_status_list,
     slim_commit, slim_commit_list,
     slim_source_list,
+    slim_code_search,
     slim_diffstat_entry, slim_diffstat_list,
     slim_comment, slim_comment_list,
     slim_commit_comment, slim_commit_comment_list,
@@ -198,6 +199,7 @@ _ANNOTATION_PREFIXES = {
 _ANNOTATION_OVERRIDES = {
     # --- read-only despite a write-sounding verb ---
     "suggest_pull_request_reviewers":   (True,  False, True),
+    "search_code":                      (True,  False, True),
     # --- update-like, idempotent (state toggles) ---
     "approve_pull_request":             (False, False, True),
     "unapprove_pull_request":           (False, False, True),
@@ -2986,6 +2988,58 @@ async def list_directory(
         repo_slug, commit, path, workspace, page_size, max_pages
     )
     return slim_source_list(result)
+
+
+@conditional_tool()
+async def search_code(
+    search_term: str,
+    repository: Optional[str] = None,
+    path: Optional[str] = None,
+    extension: Optional[str] = None,
+    language: Optional[str] = None,
+    project: Optional[str] = None,
+    workspace: Optional[str] = None,
+    max_results: int = 20,
+    request_id: Optional[str] = None,
+    next_cursor: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Full-text search of code across all repositories in a workspace.
+
+    Only default branches are searched. Prefer this over walking directories with
+    list_directory when looking for a string. The search is lexical (no regex);
+    filters are combined with AND.
+
+    Args:
+        search_term: Text to search for, e.g. "kind: Job"
+        repository: Repository slug, or a wildcard such as "cid-cmpt-*"
+            (* = any characters, ? = one character; must match the whole slug)
+        path: Path fragment such as "extras/initialize" (folder/file names in order),
+            or a wildcard over the whole path such as "*/job.yaml"
+        extension: File extension without the dot, e.g. "yaml"
+        language: Language name, e.g. "python"
+        project: Project key or name
+        workspace: Workspace name (optional, defaults to configured workspace)
+        max_results: Files per page, 1 to 100 (default: 20)
+        request_id: For the next page: "request_id" from the previous result
+        next_cursor: For the next page: "next_cursor" from the previous result
+            (keep search_term and filters unchanged between pages)
+
+    Returns:
+        Matched files with repository, path, commit and code chunks (line range,
+        matched line numbers, source), the approximate total, and request_id /
+        next_cursor when more results exist
+    """
+    client = get_client()
+    result = await client.search_code(
+        search_term, workspace, repository, path, extension, language, project,
+        max_results, request_id, next_cursor
+    )
+    slim = slim_code_search(result)
+    if request_id:
+        # metadata.total_count is only meaningful on the first page.
+        slim.pop("total", None)
+    return slim
 
 
 # ========== Pipelines Config Tools ==========

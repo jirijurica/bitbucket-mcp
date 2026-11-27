@@ -4,7 +4,7 @@ import base64
 import logging
 import re
 import urllib.parse
-from typing import Any, Callable, Dict, FrozenSet, Literal, Optional, Protocol
+from typing import Any, Callable, Dict, FrozenSet, List, Literal, Optional, Protocol
 import httpx
 from .auth import audit_logger, is_workspace_allowed
 
@@ -3339,6 +3339,87 @@ class BitbucketClient:
         return await aggregate_pages(
             self.client, url, {}, config, follow_redirects=True
         )
+
+    async def search_code(
+        self,
+        search_term: str,
+        workspace: Optional[str] = None,
+        repository: Optional[str] = None,
+        path: Optional[str] = None,
+        extension: Optional[str] = None,
+        language: Optional[str] = None,
+        project: Optional[str] = None,
+        max_results: int = 20,
+        request_id: Optional[str] = None,
+        next_cursor: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Full-text code search across the repositories of a workspace.
+
+        Uses ``POST /workspaces/{workspace}/codesearch``, the replacement of the
+        ``GET .../search/code`` endpoint Bitbucket removed on 15 November 2026. Only
+        default branches are searched. The endpoint rejects app passwords (403); it
+        needs an API token with ``read:repository`` and ``read:workspace`` scopes.
+
+        Filters are ANDed. ``repository`` and ``path`` switch to a wildcard match
+        when they contain ``*`` or ``?`` (a wildcard must match the whole value).
+
+        Args:
+            search_term: Text to search for (non-blank, at most 1024 characters)
+            workspace: Workspace name (defaults to self.workspace)
+            repository: Repository slug or wildcard (e.g. ``cid-cmpt-*``)
+            path: Path fragment (e.g. ``extras/initialize``) or wildcard (``*/job.yaml``)
+            extension: File extension without the dot (e.g. ``yaml``)
+            language: Language name (e.g. ``python``)
+            project: Project key or name
+            max_results: Results per page, 1 to 100 (default: 20)
+            request_id: ``id`` of the previous response, to fetch the next page
+            next_cursor: ``pagination.next_cursor`` of the previous response
+
+        Returns:
+            Raw codesearch response (``id``, ``pagination``, ``repositories``,
+            ``matched_files``, ``metadata``)
+
+        Raises:
+            ValueError: On an empty search term, an out-of-range ``max_results`` or a
+                cursor given without its ``request_id`` (or the reverse)
+        """
+        if not search_term or not search_term.strip():
+            raise ValueError("search_term must not be empty.")
+        if len(search_term) > 1024:
+            raise ValueError("search_term must be at most 1024 characters.")
+        if not 1 <= max_results <= 100:
+            raise ValueError("max_results must be between 1 and 100.")
+        if bool(request_id) != bool(next_cursor):
+            raise ValueError("request_id and next_cursor must be given together.")
+        ws = self._resolve_workspace(workspace)
+
+        filters: List[Dict[str, Any]] = []
+        for attribute, value, wildcard_ok in (
+            ("repository", repository, True),
+            ("path", path, True),
+            ("extension", extension, False),
+            ("language", language, False),
+            ("project", project, False),
+        ):
+            if not value:
+                continue
+            op = "wildcard" if wildcard_ok and any(c in value for c in "*?") else "eq"
+            filters.append({"attribute": attribute, op: value})
+
+        query: Dict[str, Any] = {"search_term": search_term}
+        if len(filters) == 1:
+            query["filters"] = filters[0]
+        elif filters:
+            query["filters"] = {"and": filters}
+        body: Dict[str, Any] = {"query": query, "config": {"max_results": max_results}}
+        if request_id:
+            body["request_id"] = request_id
+            body["pagination"] = {"next_cursor": next_cursor}
+
+        response = await self.client.post(f"/workspaces/{ws}/codesearch", json=body)
+        response.raise_for_status()
+        return response.json()
 
     # ========== Deployments & Environments ==========
     #

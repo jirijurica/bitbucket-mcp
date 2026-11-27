@@ -194,6 +194,10 @@
       "list_directory": {
         "enabled": true,
         "description": "List the entries of a directory at a commit/branch"
+      },
+      "search_code": {
+        "enabled": true,
+        "description": "Full-text code search across workspace repositories (default branches only)"
       }
     },
     "pipelines": {

@@ -173,7 +173,7 @@ Add to `.vscode/mcp.json` (workspace) or `~/Library/Application Support/Code/Use
 | **Review Summary** | `get_pull_request_review_summary` |
 | **Issues** | `list_issues`, `get_issue`, `create_issue`, `update_issue`, `delete_issue`, `get_issue_comments`, `get_issue_comment`, `add_issue_comment`, `update_issue_comment`, `delete_issue_comment` |
 | **Commits** | `list_commits`, `get_commit`, `get_commit_comments`, `get_commit_comment`, `add_commit_comment` |
-| **Source** | `get_file_content`, `list_directory` |
+| **Source** | `get_file_content`, `list_directory`, `search_code` |
 | **Deployments** | `list_environments`, `get_environment`, `create_environment`, `delete_environment`, `list_deployments`, `get_deployment`, `list_deployment_variables`, `create_deployment_variable`, `update_deployment_variable`, `delete_deployment_variable` |
 | **Branch Restrictions** | `list_branch_restrictions`, `get_branch_restriction`, `create_branch_restriction`, `update_branch_restriction`, `delete_branch_restriction` |
 | **Workspace** | `list_workspace_members`, `get_workspace_member`, `list_workspace_permissions`, `list_repository_permissions` |

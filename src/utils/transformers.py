@@ -4,7 +4,8 @@ Each function takes a raw Bitbucket API response and returns a slimmed version
 containing only the fields useful for LLM tool consumption.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
+from urllib.parse import urlsplit
 
 
 def _slim_user(user: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -241,6 +242,68 @@ def slim_source_list(data: Dict[str, Any]) -> Dict[str, Any]:
             commit_hash = commit["hash"][:12]
             break
     result["commit"] = commit_hash
+    return result
+
+
+# ========== Code Search ==========
+
+def _repo_from_url(url: Optional[str]) -> Optional[str]:
+    """``https://bitbucket.org/<ws>/<repo>/src/...`` -> ``<ws>/<repo>``."""
+    if not url:
+        return None
+    parts = urlsplit(url).path.strip("/").split("/")
+    return "/".join(parts[:2]) if len(parts) >= 2 else None
+
+
+def _repository_names(data: Dict[str, Any]) -> Dict[Any, str]:
+    """Map repository ids to ``ns/name`` from the response's ``repositories`` list."""
+    names: Dict[Any, str] = {}
+    for repo in data.get("repositories") or []:
+        name = "/".join(x for x in (repo.get("ns"), repo.get("name")) if x)
+        if repo.get("id") is not None and name:
+            names[repo["id"]] = name
+    return names
+
+
+def slim_code_search_file(
+    item: Dict[str, Any], repo_names: Optional[Dict[Any, str]] = None
+) -> Dict[str, Any]:
+    """Slim one matched file to repository, path, commit and matched chunks."""
+    repo_names = repo_names or {}
+    chunks = []
+    for chunk in item.get("matched_chunks") or []:
+        line_range = chunk.get("line_range") or {}
+        chunks.append({
+            "lines": f"{line_range.get('start')}-{line_range.get('end')}",
+            "matched_lines": chunk.get("matched_line_numbers") or [],
+            "code": chunk.get("source_code"),
+        })
+    return {
+        "repository": (
+            repo_names.get(item.get("repositoryId"))
+            or _repo_from_url(item.get("url"))
+            or item.get("repositoryId")
+        ),
+        "path": item.get("path"),
+        "commit": (item.get("version") or "")[:12] or None,
+        "chunks": chunks,
+    }
+
+
+def slim_code_search(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Slim a codesearch response, keeping what is needed to fetch the next page."""
+    repo_names = _repository_names(data)
+    files = [slim_code_search_file(f, repo_names) for f in data.get("matched_files") or []]
+    pagination = data.get("pagination") or {}
+    result: Dict[str, Any] = {
+        "values": files,
+        "count": len(files),
+        "total": (data.get("metadata") or {}).get("total_count"),
+        "has_more": bool(pagination.get("has_more")),
+    }
+    if result["has_more"]:
+        result["request_id"] = data.get("id")
+        result["next_cursor"] = pagination.get("next_cursor")
     return result
 
 
